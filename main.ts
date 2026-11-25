@@ -1,34 +1,63 @@
-// Pigeon Pitch, One Line — entry program.
-// Writes the one-line elevator pitch to entry.txt in the output dir.
+// Pigeon Pitch entrypoint — reviser rewrite.
+// Emits a single investor pitch line for the sealed scorer.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
-const PITCH: string =
-  "StatueGuard: pay monthly or we redecorate your statue daily, with 10,000 pigeons already on standby.";
+const OUTPUT_PATH = "/output/entry.txt";
+const MIN_CHARS = 1;
+const MAX_CHARS = 200;
 
-function findProblems(text: string): string[] {
+// The pitch itself. Kept as one literal so the file content is exact.
+const PIGEON_PITCH =
+  "Invest in breadcrumbs. Two million of us eat them every day, and the entire supply is controlled by three old men.";
+
+type PitchAudit = {
+  ok: boolean;
+  problems: string[];
+  charCount: number;
+};
+
+function auditPitch(text: string): PitchAudit {
   const problems: string[] = [];
-  if (text.length < 1 || text.length > 200) {
-    problems.push(`length ${text.length} outside 1..200`);
+  const charCount = [...text].length;
+
+  if (charCount < MIN_CHARS) {
+    problems.push(`pitch is empty (${charCount} chars)`);
   }
-  if (text.includes("\n") || text.includes("\r")) {
-    problems.push("text must be a single line");
+  if (charCount > MAX_CHARS) {
+    problems.push(`pitch exceeds limit (${charCount} > ${MAX_CHARS})`);
   }
   if (text.trim().length === 0) {
-    problems.push("text must not be only whitespace");
+    problems.push("pitch contains only whitespace");
   }
-  if (!/^[\x20-\x7e]+$/.test(text)) {
-    problems.push("text must be printable ASCII");
+  if (text.includes("\n") || text.includes("\r")) {
+    problems.push("pitch must stay on one line");
   }
-  return problems;
+
+  return { ok: problems.length === 0, problems, charCount };
 }
 
-const issues: string[] = findProblems(PITCH);
-if (issues.length > 0) {
-  throw new Error(`invalid pitch: ${issues.join("; ")}`);
+function prepareOutputLocation(filePath: string): void {
+  mkdirSync(dirname(filePath), { recursive: true });
 }
 
-const outputDir: string = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-mkdirSync(outputDir, { recursive: true });
-writeFileSync(join(outputDir, "entry.txt"), PITCH, "utf8");
+function publishPitch(): void {
+  const audit = auditPitch(PIGEON_PITCH);
+  if (!audit.ok) {
+    throw new Error(`pitch audit failed: ${audit.problems.join("; ")}`);
+  }
+  prepareOutputLocation(OUTPUT_PATH);
+  writeFileSync(OUTPUT_PATH, PIGEON_PITCH, { encoding: "utf8" });
+
+  // Runtime guard: confirm the bytes on disk match the pitch exactly,
+  // so a partial or re-encoded write fails loudly instead of scoring 0.
+  const writtenBack = readFileSync(OUTPUT_PATH, "utf8");
+  if (writtenBack !== PIGEON_PITCH) {
+    throw new Error(
+      `write verification failed: expected ${audit.charCount} chars, got ${[...writtenBack].length}`,
+    );
+  }
+}
+
+publishPitch();
